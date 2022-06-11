@@ -1,6 +1,6 @@
 import argparse
-from lib.utils import banner
-from lib.app.app import App
+from core.utils import banner
+from core.app.app import App
 import colorama
 colorama.init(autoreset=True)
 
