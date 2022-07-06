@@ -114,14 +114,6 @@ class App:
             kernel32.SetConsoleMode(kernel32.GetStdHandle(-10), (0x4 | 0x80 | 0x20 | 0x2 | 0x10 | 0x1 | 0x00 | 0x100))
 
     def __process_file_ie(self):
-
-        def _getSize(_fileObj):
-            _pos = _fileObj.tell()
-            _fileObj.seek(0, 2)
-            _fsize = _fileObj.tell()
-            _fileObj.seek(_pos)
-            return _fsize
-
         vdir = (os.getcwd() + os.sep + 'log' + os.sep) + f'extraction_{self.__uf}_{self.__request_id}{os.sep}dump{os.sep}'
         list_files = list(filter(lambda x: x.startswith('extraction_thread_'), os.listdir(vdir)))
         insert = 'INSERT INTO ie (cnpj, ie, razao_social, uf, cod_sit, situacao, record_dt_hr) '
@@ -130,9 +122,8 @@ class App:
         dt_hr = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
         for file in list_files:
             with open(vdir + file, 'rb') as f:
-                fsize = _getSize(f)
-                while f.tell() < fsize:
-                    size = int.from_bytes(f.read(2), 'big')
+                while _size := f.read(2):
+                    size = int.from_bytes(_size, 'big')
                     s = zlib.decompress(f.read(size)).decode('utf-8')
                     s = s.split('^|^')
                     values = 'VALUES( '

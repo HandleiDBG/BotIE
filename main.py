@@ -1,4 +1,4 @@
-from core.utils import banner
+from core.utils import banner, consts
 from core.app.app import App
 import colorama
 
@@ -13,7 +13,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
 
 
