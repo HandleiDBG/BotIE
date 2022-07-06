@@ -1,3 +1,4 @@
+# Will be removed soon...
 
 class CnpjManager:
     def __init__(self, aFileName=None, aList=None):
@@ -5,6 +6,7 @@ class CnpjManager:
         self.list = aList
         self.fileName = aFileName
         self.EOF = True
+        self.id = -1
 
     def load(self):
         try:
@@ -57,4 +59,3 @@ class CnpjManager:
                 return item
         except:
             pass
-            # print('CnpjManager: Index out of range')

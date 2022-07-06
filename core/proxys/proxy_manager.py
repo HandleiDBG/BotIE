@@ -1,4 +1,6 @@
+# Will be implemented soon...
 import requests
+
 
 class ProxyManager:
     def __init__(self):
@@ -31,7 +33,6 @@ class ProxyManager:
             return True
         except:
             pass
-            # print('Error: Load Proxy!')
 
     def next(self):
         try:
@@ -44,4 +45,3 @@ class ProxyManager:
                 self.next()
         except:
             pass
-            # print('ProxyManager: Index out of range')
