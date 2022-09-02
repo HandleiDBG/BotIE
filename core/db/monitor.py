@@ -2,7 +2,7 @@ import os
 import sqlite3
 from sqlite3 import Error
 from types import SimpleNamespace
-import core.utils.consts as consts
+import core.consts.consts as consts
 from core.utils.hexcept import HExcept
 from core.db import schemas
 from datetime import datetime
@@ -40,6 +40,12 @@ class MonitorDB:
                 self.__create_base_structure()
             self.connection.row_factory = self.__dict_factory
             self.cursor = self.connection.cursor()
+            # PRAGMA soon...
+            # self.cursor.execute('PRAGMA journal_mode = OFF')
+            # self.cursor.execute('PRAGMA synchronous = 0')
+            # self.cursor.execute('PRAGMA cache_size = 1000000')
+            # self.cursor.execute('PRAGMA locking_mode = EXCLUSIVE')
+            # self.cursor.execute('PRAGMA temp_store = MEMORY')
             self.running = True
         except Exception as e:
             HExcept.print_exit('Error execute crete_connection!', e)
@@ -55,7 +61,7 @@ class MonitorDB:
         return __Row(d)
 
     def __searchCNPJ(self, _packet):
-        self.cursor.execute(' SELECT cnpj FROM company WHERE uf = ? ORDER BY 1 ASC', (_packet.data.uf,))
+        self.cursor.execute(' SELECT cnpj FROM company WHERE uf = ? ORDER BY 1', (_packet.data.uf,))
         fatch = self.cursor.fetchall()
         if fatch:
             vList = list(map(lambda s: s.cnpj, fatch))

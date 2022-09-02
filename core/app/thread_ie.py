@@ -1,9 +1,9 @@
 from core.cnpj.cnpj_manager import CnpjManager
-from core.proxys.proxy_manager import ProxyManager
 from random import randint
 from pathlib import Path
 import threading
-from core.utils import log, hutils, consts
+from core.utils import log
+from core.consts import consts
 import requests
 import os
 import time
@@ -12,10 +12,11 @@ from core.cnpj.contribuinte import Contribuinte
 
 
 class ThreadIE(threading.Thread):
-    def __init__(self, aid=-1, auf='', alist=None, aid_reg_bd=-1, group=None, target=None, name=None, args=(), kwargs=None, verbose=None):
+    def __init__(self, aid=-1, auf='', alist=None, aid_reg_bd=-1, proxyObj=None, group=None, target=None, name=None, args=(), kwargs=None, verbose=None):
         super().__init__()
         self.id = aid
         self.__uf = auf
+        self.__proxyObj = proxyObj
         self.ie_found = 0
         self.ie_not_found = 0
         self.cnpj_processed = 0
@@ -43,8 +44,9 @@ class ThreadIE(threading.Thread):
         logFilename = f'{self.__PATH_NAME_LOG}log_thread_{str(self.id).zfill(3)}_{self.__uf}'
         outlog = f'[T{str(self.id).zfill(3)}|P{self.__cnpj.position}/S{len(self.__cnpj.list)}|{self.__payload.get("txtCNPJ")}]'
         try:
-            vProxy = ProxyManager()
-            vAddrs_prx = {'http': vProxy.next()}
+            log.writefile(f'{outlog}[PROXY] Before NEXT.', logFilename)
+            vAddrs_prx = {'https': self.__proxyObj.getNext()}
+            log.writefile(f'{outlog}[PROXY] After NEXT: {vAddrs_prx}', logFilename)
             self.__payload.update({'txtCNPJ': self.__cnpj.next()})
             while not self.__cnpj.EOF:  # loop request
                 try:
@@ -57,21 +59,23 @@ class ThreadIE(threading.Thread):
                             self.__payload,
                             headers=headers,
                             proxies=vAddrs_prx,
-                            timeout=15,
+                            timeout=60,
                             allow_redirects=False)
                     except Exception as e:
                         log.writefile(f'{outlog}[REQUEST] Exception: {e}', logFilename)
-                    log.writefile(f'{outlog}[REQUEST] Response: {r.status_code}', logFilename)
+                    log.writefile(f'{outlog}[REQUEST] Proxy({vAddrs_prx.get("https")}) Response: {r.status_code}', logFilename)
                     time.sleep(1)
                     if r.status_code == 200:
                         self.__parser(r.text, outlog, logFilename)
+                    elif r.status_code == 503:
+                        log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} waiting 10min.', logFilename)
+                        time.sleep(600)
                     else:
-                        if r.status_code in (403, 500, 502, 503, 504, None):
-                            vAddrs_prx.update({'http': vProxy.next()})
+                        vAddrs_prx.update({'https': self.__proxyObj.getNext()})
                         log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} BAD', logFilename)
                 except Exception as e:
-                    vAddrs_prx.update({'http': vProxy.next()})
-                    log.writefile(f'{outlog}[MAIN_LOOP_EXCEPT] {e. __class__}\n {e}', logFilename)
+                    vAddrs_prx.update({'https': self.__proxyObj.getNext()})
+                    log.writefile(f'{outlog}[MAIN_LOOP_EXCEPT] {e.__class__}\n {e}', logFilename)
                 log.writefile(f'{outlog}[FOUND_NOT_FOUND] Found:{self.ie_found} Not found: {self.ie_not_found}', logFilename)
                 self.cnpj_processed = self.__cnpj.position
         finally:
@@ -85,33 +89,40 @@ class ThreadIE(threading.Thread):
             self.ie_not_found += 1
             self.__payload.update({'txtCNPJ': self.__cnpj.next()})
         elif soup.find('table', {'id': 'Grid'}):
-            table = soup.find('table', {'id': 'Grid'})
-            rows = table.find_all('tr')[1::]
-            for row in rows:
-                cols = row.find_all('td')
-                contrib = Contribuinte()
-                for _index, _ele in enumerate(cols):
-                    _s = _ele.text.strip()
-                    log.writefile(f'{outlog}[OUT]: {_index}: {_s}', logFilename)
-                    setattr(contrib, __FIELDS[_index], _s)
-                list_ie.append(contrib)
-            self.ie_found += len(list_ie)
-            log.writefile(f'{outlog}[PARSER_DATA_IE] Found! {list_ie.__len__()}', logFilename)
-            self.__saveIE(list_ie)
-            self.__payload.update({'txtCNPJ': self.__cnpj.next()})
+            try:
+                table = soup.find('table', {'id': 'Grid'})
+                rows = table.find_all('tr')[1::]
+                for row in rows:
+                    if row.find('table'):
+                        break
+                    cols = row.find_all('td')
+                    contrib = Contribuinte()
+                    for _index, _ele in enumerate(cols):
+                        _s = _ele.text.strip()
+                        setattr(contrib, __FIELDS[_index], _s)
+                    list_ie.append(contrib)
+                self.ie_found += len(list_ie)
+                log.writefile(f'{outlog}[PARSER_DATA_IE] Found! {list_ie.__len__()}', logFilename)
+                self.__saveIE(list_ie, outlog, logFilename)
+                self.__payload.update({'txtCNPJ': self.__cnpj.next()})
+            except Exception as e:
+                log.writefile(f'{outlog}[REQUEST] Exception: {e}', logFilename)
         else:
             log.writefile(f'{outlog}[PARSER_DATA_IE] Not found!', logFilename)
             self.ie_not_found += 1
             self.__payload.update({'txtCNPJ': self.__cnpj.next()})
 
-    def __saveIE(self, aList_IE):
+    def __saveIE(self, aList_IE, outlog, logFilename):
         import zlib
         v_dir = (os.getcwd() + os.sep + 'log' + os.sep)+self.__PATH_NAME_EXTN
         Path(v_dir).mkdir(parents=True, exist_ok=True)
         with open(f'{v_dir}extraction_thread_{str(self.id).zfill(3)}_{self.__uf}', 'a+b') as f:
             for c in aList_IE:
-                _s = f'{c.cnpj}^|^{c.ie}^|^{c.razao_social}^|^{c.uf}^|^{c.cod_sit}^|^{c.situacao}'.encode('utf-8')
+                log.writefile(f'{outlog}[SAVE_IE]: {c.cnpj}^|^{c.ie}^|^{c.razao_social}^|^{c.uf}^|^{c.cod_sit}^|^{c.situacao}', logFilename)
+                _s = f'{c.cnpj}^|^{c.ie}^|^{c.razao_social}^|^{c.uf}^|^{c.cod_sit}^|^{c.situacao}'.encode('utf-8', errors='replace')
                 _s = zlib.compress(_s)
                 _size = len(_s).to_bytes(2, 'big')
                 f.write(_size+_s)
+                f.flush()
+                os.fsync(f.fileno())
 

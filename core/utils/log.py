@@ -13,5 +13,7 @@ def writefile(data='', filename=None):
             filename_path = filename[:i + 1]
             filename = filename[i + 1::]
     Path(PATH_LOG + filename_path).mkdir(parents=True, exist_ok=True)
-    with open(PATH_LOG + filename_path + filename, 'a') as f:
-        f.write(f'[{datetime.today().strftime("%Y-%m-%d %H:%M:%S")}]: {data}\n')
+    with open(PATH_LOG + filename_path + filename, 'a', encoding='utf-8') as f:
+        f.write(f'[{datetime.today().strftime("%Y-%m-%d %H:%M:%S")}]: {str(data)} \n')
+        f.flush()
+        os.fsync(f.fileno())
