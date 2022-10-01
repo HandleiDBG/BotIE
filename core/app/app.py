@@ -160,6 +160,6 @@ class App:
                         else:
                             HExcept.print_exit('Error in execute script!')
 
-        print(f'\n{Fore.GREEN}[*] All data successfully saved in the database\n\n')
+        print(f'\n{Fore.GREEN}[*] All data successfully saved in the database')
         # print(f'{Fore.GREEN}[*] Finished')
 

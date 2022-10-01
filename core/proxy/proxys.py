@@ -33,8 +33,8 @@ class Proxys:
             self.__listObj = [
                 freeproxylist.FreeProxyList(),
                 proxylistdownload.ProxyListDownload(),
-                openproxy_space.OpenProxySpace(),
-                ptproxyserverspro.PtProxyServersPro()
+                openproxy_space.OpenProxySpace()
+                # ptproxyserverspro.PtProxyServersPro()
             ]
         except:
             self.__listObj = None
