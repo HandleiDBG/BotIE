@@ -13,6 +13,12 @@ from fake_useragent import UserAgent
 from urllib.parse import urlparse
 import socket
 import socks
+import urllib3
+import warnings
+
+
+# Suprime os InsecureRequestWarnings do urllib3
+warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
 
 
 class ThreadIE(threading.Thread):
@@ -53,9 +59,10 @@ class ThreadIE(threading.Thread):
         outlog = f'[T{str(self.id).zfill(3)}|P{self.__cnpj.position}/S{len(self.__cnpj.list)}|{self.__payload.get("txtCNPJ")}]'
         try:
             log.writefile(f'{outlog}[PROXY] Before NEXT.', logFilename)
+            pp = self.__proxyObj.getNext()
             vAddrs_prx = {
-                'http': self.__proxyObj.getNext(),
-                'https': self.__proxyObj.getNext()
+                'http': pp,
+                'https': pp
             }
             log.writefile(f'{outlog}[PROXY] After NEXT: {vAddrs_prx}', logFilename)
             self.__payload.update({'txtCNPJ': self.__cnpj.next()})
@@ -95,7 +102,8 @@ class ThreadIE(threading.Thread):
                                 headers=headers,
                                 proxies=vAddrs_prx,
                                 timeout=60,
-                                allow_redirects=False
+                                allow_redirects=False,
+                                verify=False
                             )
                         except Exception as e:
                             log.writefile(f'{outlog}[REQUEST] Exception: {e}', logFilename)
@@ -106,9 +114,10 @@ class ThreadIE(threading.Thread):
                         elif r.status_code == 503:
                             log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} waiting 01min.', logFilename)
                             # time.sleep(60)
+                            pp = self.__proxyObj.getNext()
                             vAddrs_prx.update({
-                                'http': self.__proxyObj.getNext(),
-                                'https': self.__proxyObj.getNext()
+                                'http': pp,
+                                'https': pp
                             })
                         elif r.status_code is None:
                             if self.__is_proxy_working(vAddrs_prx.get("https"), outlog, logFilename):
@@ -121,33 +130,38 @@ class ThreadIE(threading.Thread):
                                 # time.sleep(5)
                                 # # time.sleep(1200)
                                 # count_p_ok += 1
+                                pp = self.__proxyObj.getNext()
                                 vAddrs_prx.update({
-                                    'http': self.__proxyObj.getNext(),
-                                    'https': self.__proxyObj.getNext()
+                                    'http': pp,
+                                    'https': pp
                                 })
                             else:
+                                pp = self.__proxyObj.getNext()
                                 vAddrs_prx.update({
-                                    'http': self.__proxyObj.getNext(),
-                                    'https': self.__proxyObj.getNext()
+                                    'http': pp,
+                                    'https': pp
                                 })
                         else:
                             log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} BAD', logFilename)
                             # time.sleep(60)
+                            pp = self.__proxyObj.getNext()
                             vAddrs_prx.update({
-                                'http': self.__proxyObj.getNext(),
-                                'https': self.__proxyObj.getNext()
+                                'http': pp,
+                                'https': pp
                             })
                     else:
                         log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} - Proxy Fail! Next...', logFilename)
+                        pp = self.__proxyObj.getNext()
                         vAddrs_prx.update({
-                            'http': self.__proxyObj.getNext(),
-                            'https': self.__proxyObj.getNext()
+                            'http': pp,
+                            'https': pp
                         })
 
                 except Exception as e:
+                    pp = self.__proxyObj.getNext()
                     vAddrs_prx.update({
-                        'http': self.__proxyObj.getNext(),
-                        'https': self.__proxyObj.getNext()
+                        'http': pp,
+                        'https': pp
                     })
                     log.writefile(f'{outlog}[MAIN_LOOP_EXCEPT] {e.__class__}\n {e}', logFilename)
                 log.writefile(f'{outlog}[FOUND_NOT_FOUND] Found:{self.ie_found} Not found: {self.ie_not_found}', logFilename)
@@ -162,19 +176,24 @@ class ThreadIE(threading.Thread):
         host = parsed_url.hostname
         port = parsed_url.port
 
-        test_url = 'https://httpbin.org/ip'
+        test_url = 'http://httpbin.org/ip'
 
         try:
             if scheme in ('http', 'https'):
-                response = requests.get(test_url, proxies={scheme: proxy}, timeout=30)
+                pp = {
+                    'https': proxy,
+                    'https': proxy
+                }
+                log.writefile(f'{outlog}[REQUEST] Trying request! HTTP/HTTPS: ({proxy}) {scheme}://{host}:{port}', logFilename)
+                response = requests.get(test_url, proxies=pp, timeout=30, verify=False)
                 response.raise_for_status()
 
                 if response.status_code == 200:
                     ip_info = response.json()
-                    log.writefile(f'{outlog}[REQUEST] Check Proxy: {ip_info["origin"]} OK!', logFilename)
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy HTTP/HTTPS: {scheme}://{host}:{port} - {ip_info["origin"]} OK!', logFilename)
                     return True
                 else:
-                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail!', logFilename)
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! HTTP/HTTPS {scheme}://{host}:{port}', logFilename)
                     return False
             elif scheme in ('socks4', 'socks5'):
                 socks.set_default_proxy(scheme, host, port)
@@ -183,22 +202,22 @@ class ThreadIE(threading.Thread):
                 proxy_type = socks.SOCKS5 if scheme == 'socks5' else socks.SOCKS4
 
                 if self.test_socks_proxy(proxy_type, host, port, test_url, outlog, logFilename):
-                    response = requests.get(test_url, proxies={scheme: proxy}, timeout=30)
+                    response = requests.get(test_url, proxies={scheme: proxy}, timeout=30, verify=False)
 
                     if response.status_code == 200:
                         ip_info = response.json()
-                        log.writefile(f'{outlog}[REQUEST] Check Proxy: {ip_info["origin"]} OK!', logFilename)
+                        log.writefile(f'{outlog}[REQUEST] Check Proxy SOCKS4/SOCKS5: {scheme}://{host}:{port} - {ip_info["origin"]} OK!', logFilename)
                         return True
                     else:
-                        log.writefile(f'{outlog}[REQUEST] Check Proxy Fail!', logFilename)
+                        log.writefile(f'{outlog}[REQUEST] Check Proxy Fail SOCKS4/SOCKS5! {scheme}://{host}:{port}', logFilename)
                         return False
                 else:
-                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! Proxy not working.', logFilename)
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail ! Proxy not working SOCKS4/SOCKS5. {scheme}://{host}:{port}', logFilename)
                     return False
             else:
-                raise ValueError(f"Esquema de proxy não suportado: {scheme}")
+                raise ValueError(f"Esquema de proxy não suportado: {scheme}://{host}:{port}")
         except Exception as e:
-            log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! Exception: {e}', logFilename)
+            log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! Exception: {scheme}://{host}:{port} - {e}', logFilename)
             return False
 
     def test_socks_proxy(self, proxy_type, proxy_host, proxy_port, target_url, outlog, logFilename):
@@ -206,7 +225,7 @@ class ThreadIE(threading.Thread):
             socks.set_default_proxy(proxy_type, proxy_host, proxy_port)
             socket.socket = socks.socksocket
 
-            response = requests.get(target_url, timeout=30)
+            response = requests.get(target_url, timeout=30, verify=False)
             response.raise_for_status()
             log.writefile(f'{outlog}[REQUEST] Proxy SOCKS {proxy_type}://{proxy_host}:{proxy_port} está funcionando corretamente.', logFilename)
             return True

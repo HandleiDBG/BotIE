@@ -11,8 +11,8 @@ class FreeProxyList(ProxyBase):
 
     def _mount_list(self):
         urls = [
-            'https://www.sslproxies.org/',
-            'https://www.socks-proxy.net/',
+            # 'https://www.sslproxies.org/',
+            # 'https://www.socks-proxy.net/',
             'https://free-proxy-list.net/'
         ]
         for url in urls:
@@ -41,9 +41,9 @@ class FreeProxyList(ProxyBase):
                     if idx_version:
                         protocol = cols[idx_version].text.strip()
                     elif cols[idx_prot].text.strip() == 'yes':
-                        protocol = 'HTTPS'
+                        protocol = 'https'
                     elif cols[idx_prot].text.strip() == 'no':
-                        protocol = 'HTTP'
+                        protocol = 'http'
                     else:
                         protocol = ''
 
