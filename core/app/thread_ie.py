@@ -9,6 +9,10 @@ import os
 import time
 from bs4 import BeautifulSoup
 from core.cnpj.contribuinte import Contribuinte
+from fake_useragent import UserAgent
+from urllib.parse import urlparse
+import socket
+import socks
 
 
 class ThreadIE(threading.Thread):
@@ -40,46 +44,176 @@ class ThreadIE(threading.Thread):
     def run(self):
         self.request_ie()
 
+    def get_random_user_agent(self):
+        user_agent = UserAgent()
+        return user_agent.random
+
     def request_ie(self):
         logFilename = f'{self.__PATH_NAME_LOG}log_thread_{str(self.id).zfill(3)}_{self.__uf}'
         outlog = f'[T{str(self.id).zfill(3)}|P{self.__cnpj.position}/S{len(self.__cnpj.list)}|{self.__payload.get("txtCNPJ")}]'
         try:
             log.writefile(f'{outlog}[PROXY] Before NEXT.', logFilename)
-            vAddrs_prx = {'https': self.__proxyObj.getNext()}
+            vAddrs_prx = {
+                'http': self.__proxyObj.getNext(),
+                'https': self.__proxyObj.getNext()
+            }
             log.writefile(f'{outlog}[PROXY] After NEXT: {vAddrs_prx}', logFilename)
             self.__payload.update({'txtCNPJ': self.__cnpj.next()})
+            count_p_ok = 0
             while not self.__cnpj.EOF:  # loop request
                 try:
                     outlog = f'[T{str(self.id).zfill(3)}|P{self.__cnpj.position}/S{len(self.__cnpj.list)}|{self.__payload.get("txtCNPJ")}]'
-                    headers = {'User-Agent': consts.userAgents[randint(0, 99)]}
+                    # headers = {'User-Agent': self.get_random_user_agent()}
                     r = requests.Response()
-                    try:
-                        r = requests.post(
-                            'http://nfe.sefaz.ba.gov.br/servicos/nfenc/Modulos/Geral/NFENC_consulta_cadastro_ccc.aspx',
-                            self.__payload,
-                            headers=headers,
-                            proxies=vAddrs_prx,
-                            timeout=60,
-                            allow_redirects=False)
-                    except Exception as e:
-                        log.writefile(f'{outlog}[REQUEST] Exception: {e}', logFilename)
-                    log.writefile(f'{outlog}[REQUEST] Proxy({vAddrs_prx.get("https")}) Response: {r.status_code}', logFilename)
                     time.sleep(1)
-                    if r.status_code == 200:
-                        self.__parser(r.text, outlog, logFilename)
-                    elif r.status_code == 503:
-                        log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} waiting 10min.', logFilename)
-                        time.sleep(600)
+                    if self.__is_proxy_working(vAddrs_prx.get("https"), outlog, logFilename):
+                        log.writefile(f'{outlog}[REQUEST] Trying request...', logFilename)
+                        headers = {
+                            "User-Agent": self.get_random_user_agent()
+                            # "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                            # "Accept-Encoding": "gzip, deflate, br",
+                            # "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+                            # "Cache-Control": "max-age=0",
+                            # "Connection": "keep-alive",
+                            # "Host": "nfe.sefaz.ba.gov.br",
+                            # "Origin": "https://nfe.sefaz.ba.gov.br",
+                            # "Refeer": "https://nfe.sefaz.ba.gov.br/servicos/nfenc/Modulos/Geral/NFENC_consulta_cadastro_ccc.aspx",
+                            # "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Microsoft Edge";v="120"',
+                            # "Sec-Ch-Ua-Mobile": "?0",
+                            # "Sec-Ch-Ua-Platform": '"Windows"',
+                            # "Sec-Fetch-Dest": "document",
+                            # "Sec-Fetch-Mode": "navigate",
+                            # "Sec-Fetch-Site": "same-origin",
+                            # "Sec-Fetch-User": "?1",
+                            # "Upgrade-Insecure-Requests": "1",
+                        }
+                        log.writefile(f'{outlog}[REQUEST] {headers}', logFilename)
+                        try:
+                            r = requests.post(
+                                'http://nfe.sefaz.ba.gov.br/servicos/nfenc/Modulos/Geral/NFENC_consulta_cadastro_ccc.aspx',
+                                self.__payload,
+                                headers=headers,
+                                proxies=vAddrs_prx,
+                                timeout=60,
+                                allow_redirects=False
+                            )
+                        except Exception as e:
+                            log.writefile(f'{outlog}[REQUEST] Exception: {e}', logFilename)
+                        log.writefile(f'{outlog}[REQUEST] Proxy({vAddrs_prx.get("https")}) Response: {r.status_code}', logFilename)
+                        # time.sleep(1)
+                        if r.status_code == 200:
+                            self.__parser(r.text, outlog, logFilename)
+                        elif r.status_code == 503:
+                            log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} waiting 01min.', logFilename)
+                            # time.sleep(60)
+                            vAddrs_prx.update({
+                                'http': self.__proxyObj.getNext(),
+                                'https': self.__proxyObj.getNext()
+                            })
+                        elif r.status_code is None:
+                            if self.__is_proxy_working(vAddrs_prx.get("https"), outlog, logFilename):
+                                # log.writefile(
+                                #     f'{outlog}[REQUEST] Response: {r.status_code} - Proxy OK! Waiting 15min. {count_p_ok}',
+                                #     logFilename)
+                                # if count_p_ok == 5:
+                                #     count_p_ok = 0
+                                #     vAddrs_prx.update({'https': self.__proxyObj.getNext()})
+                                # time.sleep(5)
+                                # # time.sleep(1200)
+                                # count_p_ok += 1
+                                vAddrs_prx.update({
+                                    'http': self.__proxyObj.getNext(),
+                                    'https': self.__proxyObj.getNext()
+                                })
+                            else:
+                                vAddrs_prx.update({
+                                    'http': self.__proxyObj.getNext(),
+                                    'https': self.__proxyObj.getNext()
+                                })
+                        else:
+                            log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} BAD', logFilename)
+                            # time.sleep(60)
+                            vAddrs_prx.update({
+                                'http': self.__proxyObj.getNext(),
+                                'https': self.__proxyObj.getNext()
+                            })
                     else:
-                        vAddrs_prx.update({'https': self.__proxyObj.getNext()})
-                        log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} BAD', logFilename)
+                        log.writefile(f'{outlog}[REQUEST] Response: {r.status_code} - Proxy Fail! Next...', logFilename)
+                        vAddrs_prx.update({
+                            'http': self.__proxyObj.getNext(),
+                            'https': self.__proxyObj.getNext()
+                        })
+
                 except Exception as e:
-                    vAddrs_prx.update({'https': self.__proxyObj.getNext()})
+                    vAddrs_prx.update({
+                        'http': self.__proxyObj.getNext(),
+                        'https': self.__proxyObj.getNext()
+                    })
                     log.writefile(f'{outlog}[MAIN_LOOP_EXCEPT] {e.__class__}\n {e}', logFilename)
                 log.writefile(f'{outlog}[FOUND_NOT_FOUND] Found:{self.ie_found} Not found: {self.ie_not_found}', logFilename)
                 self.cnpj_processed = self.__cnpj.position
         finally:
             log.writefile(f'{outlog}[MAIN_TRY_END] End CNPJs', logFilename)
+
+    def __is_proxy_working(self, proxy, outlog, logFilename):
+        parsed_url = urlparse(proxy)
+
+        scheme = parsed_url.scheme
+        host = parsed_url.hostname
+        port = parsed_url.port
+
+        test_url = 'https://httpbin.org/ip'
+
+        try:
+            if scheme in ('http', 'https'):
+                response = requests.get(test_url, proxies={scheme: proxy}, timeout=30)
+                response.raise_for_status()
+
+                if response.status_code == 200:
+                    ip_info = response.json()
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy: {ip_info["origin"]} OK!', logFilename)
+                    return True
+                else:
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail!', logFilename)
+                    return False
+            elif scheme in ('socks4', 'socks5'):
+                socks.set_default_proxy(scheme, host, port)
+                socket.socket = socks.socksocket
+
+                proxy_type = socks.SOCKS5 if scheme == 'socks5' else socks.SOCKS4
+
+                if self.test_socks_proxy(proxy_type, host, port, test_url, outlog, logFilename):
+                    response = requests.get(test_url, proxies={scheme: proxy}, timeout=30)
+
+                    if response.status_code == 200:
+                        ip_info = response.json()
+                        log.writefile(f'{outlog}[REQUEST] Check Proxy: {ip_info["origin"]} OK!', logFilename)
+                        return True
+                    else:
+                        log.writefile(f'{outlog}[REQUEST] Check Proxy Fail!', logFilename)
+                        return False
+                else:
+                    log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! Proxy not working.', logFilename)
+                    return False
+            else:
+                raise ValueError(f"Esquema de proxy não suportado: {scheme}")
+        except Exception as e:
+            log.writefile(f'{outlog}[REQUEST] Check Proxy Fail! Exception: {e}', logFilename)
+            return False
+
+    def test_socks_proxy(self, proxy_type, proxy_host, proxy_port, target_url, outlog, logFilename):
+        try:
+            socks.set_default_proxy(proxy_type, proxy_host, proxy_port)
+            socket.socket = socks.socksocket
+
+            response = requests.get(target_url, timeout=30)
+            response.raise_for_status()
+            log.writefile(f'{outlog}[REQUEST] Proxy SOCKS {proxy_type}://{proxy_host}:{proxy_port} está funcionando corretamente.', logFilename)
+            return True
+        except Exception as e:
+            # Se ocorrer uma exceção, o proxy pode não estar funcionando corretamente
+            log.writefile(f'{outlog}[REQUEST] Falha ao testar o proxy SOCKS {proxy_type}://{proxy_host}:{proxy_port}. Exceção: {e}', logFilename)
+            return False
 
     def __parser(self, text_html, outlog, logFilename):
         __FIELDS = ['cnpj', 'ie', 'razao_social', 'uf', 'situacao']

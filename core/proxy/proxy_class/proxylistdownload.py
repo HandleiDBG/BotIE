@@ -13,4 +13,6 @@ class ProxyListDownload(ProxyBase):
         for p in protocol:
             url = f'https://www.proxy-list.download/api/v1/get?type={p}'
             r = self._get(url)
-            self._list.extend(list(map(lambda ss: f'{p.upper()}://{ss}', r.splitlines())))
+            for i in list(map(lambda ss: f'{p.upper()}://{ss}', r.splitlines())):
+            # self._list.extend(list(map(lambda ss: f'{p.upper()}://{ss}', r.splitlines())))
+                self._listAppend(i)

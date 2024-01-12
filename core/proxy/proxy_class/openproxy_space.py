@@ -22,4 +22,6 @@ class OpenProxySpace(ProxyBase):
                 s = s.text.strip()
                 if 'return {layout:"main",data:[{protocols:' in s:
                     x = re.findall(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,4}\b', s)
-                    self._list.extend(list(map(lambda ss:  f'{p.upper()}://{ss}', x)))
+                    for i in list(map(lambda ss:  f'{p.upper()}://{ss}', x)):
+                    # self._list.extend(list(map(lambda ss:  f'{p.upper()}://{ss}', x)))
+                        self._listAppend(i)
